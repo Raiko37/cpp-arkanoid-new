@@ -1,8 +1,8 @@
 #include "Paddle.h"
+
 #include "Constants.h"
 
-const float Paddle::MIN_WIDTH = PADDLE_MIN_WIDTH;
-const float Paddle::MAX_WIDTH = PADDLE_MAX_WIDTH;
+#include <algorithm>
 
 Paddle::Paddle(
     float startX,
@@ -14,13 +14,10 @@ Paddle::Paddle(
     baseWidth(initialWidth)
 {
     shape.setSize({ initialWidth, height });
-
     shape.setFillColor(sf::Color::Blue);
-
     shape.setOrigin(
         initialWidth / 2.f,
         height / 2.f);
-
     shape.setPosition(startX, startY);
 }
 
@@ -38,9 +35,11 @@ void Paddle::moveLeft(float dt)
     shape.move(-speed * dt, 0.f);
 
     if (shape.getGlobalBounds().left < 0.f)
+    {
         shape.setPosition(
             shape.getSize().x / 2.f,
             shape.getPosition().y);
+    }
 }
 
 void Paddle::moveRight(float dt)
@@ -66,16 +65,14 @@ void Paddle::draw(sf::RenderWindow& window) const
 
 void Paddle::resize(float newWidth)
 {
-    if (newWidth < MIN_WIDTH)
-        newWidth = MIN_WIDTH;
-
-    if (newWidth > MAX_WIDTH)
-        newWidth = MAX_WIDTH;
+    newWidth = std::clamp(
+        newWidth,
+        PADDLE_MIN_WIDTH,
+        PADDLE_MAX_WIDTH);
 
     float height = shape.getSize().y;
 
     shape.setSize({ newWidth, height });
-
     shape.setOrigin(
         newWidth / 2.f,
         height / 2.f);

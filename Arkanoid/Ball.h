@@ -43,7 +43,4 @@ private:
     float radius;
 
     bool sticky;
-
-    static const float MAX_SPEED;
-    static const float MIN_SPEED;
 };

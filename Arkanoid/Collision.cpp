@@ -14,51 +14,80 @@ void Collision::resolveBallBlockCollision(
     Ball& ball,
     const sf::FloatRect& rect)
 {
-    sf::FloatRect ballRect =
-        ball.getGlobalBounds();
-
-    float overlapLeft =
-        (ballRect.left + ballRect.width) - rect.left;
-
-    float overlapRight =
-        (rect.left + rect.width) - ballRect.left;
-
-    float overlapTop =
-        (ballRect.top + ballRect.height) - rect.top;
-
-    float overlapBottom =
-        (rect.top + rect.height) - ballRect.top;
-
-    bool fromLeft =
-        std::abs(overlapLeft) <
-        std::abs(overlapRight);
-
-    bool fromTop =
-        std::abs(overlapTop) <
-        std::abs(overlapBottom);
-
-    float minX =
-        fromLeft ?
-        overlapLeft :
-        overlapRight;
-
-    float minY =
-        fromTop ?
-        overlapTop :
-        overlapBottom;
+    sf::Vector2f pos =
+        ball.getPosition();
 
     sf::Vector2f vel =
         ball.getVelocity();
 
-    if (std::abs(minX) < std::abs(minY))
+    float radius =
+        ball.getRadius();
+
+    float overlapLeft =
+        pos.x + radius - rect.left;
+
+    float overlapRight =
+        rect.left + rect.width - (pos.x - radius);
+
+    float overlapTop =
+        pos.y + radius - rect.top;
+
+    float overlapBottom =
+        rect.top + rect.height - (pos.y - radius);
+
+    if (
+        overlapLeft <= 0.f ||
+        overlapRight <= 0.f ||
+        overlapTop <= 0.f ||
+        overlapBottom <= 0.f)
     {
-        vel.x = -vel.x;
-    }
-    else
-    {
-        vel.y = -vel.y;
+        return;
     }
 
+    float minOverlap = overlapLeft;
+    int side = 0;
+
+    if (overlapRight < minOverlap)
+    {
+        minOverlap = overlapRight;
+        side = 1;
+    }
+
+    if (overlapTop < minOverlap)
+    {
+        minOverlap = overlapTop;
+        side = 2;
+    }
+
+    if (overlapBottom < minOverlap)
+    {
+        side = 3;
+    }
+
+    switch (side)
+    {
+    case 0:
+        pos.x = rect.left - radius - 0.1f;
+        vel.x = -std::abs(vel.x);
+        break;
+
+    case 1:
+        pos.x = rect.left + rect.width + radius + 0.1f;
+        vel.x = std::abs(vel.x);
+        break;
+
+    case 2:
+        pos.y = rect.top - radius - 0.1f;
+        vel.y = -std::abs(vel.y);
+        break;
+
+    case 3:
+        pos.y = rect.top + rect.height + radius + 0.1f;
+        vel.y = std::abs(vel.y);
+        break;
+    }
+
+    ball.setPosition(pos);
     ball.setVelocity(vel);
 }
 
@@ -89,21 +118,33 @@ void Collision::resolveBallBallCollision(
             delta.x * delta.x +
             delta.y * delta.y);
 
-    if (distance < 0.001f)
-        return;
-
     float radiusSum =
         a.getRadius() +
         b.getRadius();
 
-    if (distance > radiusSum)
+    if (distance >= radiusSum)
         return;
+
+    if (distance < 0.001f)
+    {
+        delta = { 1.f, 0.f };
+        distance = 1.f;
+    }
 
     sf::Vector2f normal =
     {
         delta.x / distance,
         delta.y / distance
     };
+
+    float penetration =
+        radiusSum - distance;
+
+    posA.x += normal.x * penetration / 2.f;
+    posA.y += normal.y * penetration / 2.f;
+
+    posB.x -= normal.x * penetration / 2.f;
+    posB.y -= normal.y * penetration / 2.f;
 
     sf::Vector2f relative =
     {
@@ -115,24 +156,27 @@ void Collision::resolveBallBallCollision(
         relative.x * normal.x +
         relative.y * normal.y;
 
-    if (velocityAlongNormal > 0.f)
-        return;
+    if (velocityAlongNormal < 0.f)
+    {
+        constexpr float restitution = 1.f;
 
-    float e = 1.f;
+        float impulse =
+            -(1.f + restitution) *
+            velocityAlongNormal /
+            2.f;
 
-    float impulse =
-        -(1.f + e) *
-        velocityAlongNormal /
-        2.f;
+        velA.x += impulse * normal.x;
+        velA.y += impulse * normal.y;
 
-    velA.x += impulse * normal.x;
-    velA.y += impulse * normal.y;
+        velB.x -= impulse * normal.x;
+        velB.y -= impulse * normal.y;
 
-    velB.x -= impulse * normal.x;
-    velB.y -= impulse * normal.y;
+        a.setVelocity(velA);
+        b.setVelocity(velB);
+    }
 
-    a.setVelocity(velA);
-    b.setVelocity(velB);
+    a.setPosition(posA);
+    b.setPosition(posB);
 }
 
 bool Collision::isBallBelowBottom(
@@ -140,6 +184,7 @@ bool Collision::isBallBelowBottom(
     float bottomY)
 {
     return
-        ball.getPosition().y >
+        ball.getPosition().y -
+        ball.getRadius() >
         bottomY;
 }

@@ -2,6 +2,7 @@
 
 #include <SFML/Graphics.hpp>
 
+#include <memory>
 #include <vector>
 
 #include "Paddle.h"
@@ -16,7 +17,6 @@ enum class LevelType
     Maze
 };
 
-
 class Game
 {
 public:
@@ -24,12 +24,19 @@ public:
 
     void run();
 
+    void expandPaddle(float factor);
+
+    void shrinkPaddle(float factor);
+
+    void changeBallsSpeed(float factor);
+
+    void activateStickyMode();
+
+    void activateOneShotFloor();
+
+    void spawnExtraBall();
+
 private:
-    LevelType selectedLevel;
-
-    bool levelSelected;
-
-
     void processInput();
 
     void update(float dt);
@@ -40,25 +47,27 @@ private:
 
     void checkBonusesCollision();
 
-    void applyBonus(BonusType type);
-
     void removeBall(int index);
 
     void addBall(
         const sf::Vector2f& position,
-        const sf::Vector2f& velocity);
+        const sf::Vector2f& velocity
+    );
+
+    void resetBallsOnPaddle();
+
+    BonusType getRandomBonusType() const;
 
 private:
-
     sf::RenderWindow window;
 
     Paddle paddle;
 
     std::vector<Ball> balls;
 
-    std::vector<Block> blocks;
+    std::vector<std::unique_ptr<Block>> blocks;
 
-    std::vector<Bonus> activeBonuses;
+    std::vector<std::unique_ptr<Bonus>> activeBonuses;
 
     int score;
 
@@ -70,7 +79,9 @@ private:
 
     bool stickyMode;
 
-    bool started;
+    LevelType selectedLevel;
+
+    bool levelSelected;
 
     sf::Font font;
 

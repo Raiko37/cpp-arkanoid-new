@@ -5,6 +5,9 @@
 #include "Utils.h"
 
 #include <algorithm>
+#include <cmath>
+#include <random>
+#include <string>
 
 Game::Game()
     :
@@ -25,7 +28,6 @@ Game::Game()
     gameOver(false),
     oneShotFloorActive(false),
     stickyMode(false),
-    started(false),
     selectedLevel(LevelType::Classic),
     levelSelected(false)
 {
@@ -49,24 +51,18 @@ Game::Game()
         WINDOW_WIDTH - 150.f,
         10.f);
 
+    scoreText.setString("Score: 0");
+    livesText.setString(
+        "Lives: " +
+        std::to_string(lives));
+
     gameOverText.setString("GAME OVER");
 
     gameOverText.setPosition(
         250.f,
         250.f);
 
-    addBall(
-        {
-            WINDOW_WIDTH / 2.f,
-            WINDOW_HEIGHT - 60.f
-        },
-        {
-            BALL_INIT_SPEED,
-            -BALL_INIT_SPEED
-        });
-
-        balls[0].setSticky(true);
-
+    resetBallsOnPaddle();
 }
 
 void Game::run()
@@ -80,7 +76,7 @@ void Game::run()
 
         processInput();
 
-        if (!gameOver)
+        if (!gameOver && levelSelected)
             update(dt);
 
         render();
@@ -98,31 +94,33 @@ void Game::processInput()
             if (event.type == sf::Event::Closed)
                 window.close();
 
-            if (event.type == sf::Event::KeyPressed)
+            if (event.type != sf::Event::KeyPressed)
+                continue;
+
+            if (event.key.code == sf::Keyboard::Escape)
             {
-                if (event.key.code == sf::Keyboard::Num1)
-                {
-                    selectedLevel = LevelType::Classic;
-                    levelSelected = true;
-
-                    spawnLevel();
-                }
-
-                if (event.key.code == sf::Keyboard::Num2)
-                {
-                    selectedLevel = LevelType::Fortress;
-                    levelSelected = true;
-
-                    spawnLevel();
-                }
-
-                if (event.key.code == sf::Keyboard::Num3)
-                {
-                    selectedLevel = LevelType::Maze;
-                    levelSelected = true;
-
-                    spawnLevel();
-                }
+                window.close();
+            }
+            else if (event.key.code == sf::Keyboard::Num1)
+            {
+                selectedLevel = LevelType::Classic;
+                levelSelected = true;
+                spawnLevel();
+                resetBallsOnPaddle();
+            }
+            else if (event.key.code == sf::Keyboard::Num2)
+            {
+                selectedLevel = LevelType::Fortress;
+                levelSelected = true;
+                spawnLevel();
+                resetBallsOnPaddle();
+            }
+            else if (event.key.code == sf::Keyboard::Num3)
+            {
+                selectedLevel = LevelType::Maze;
+                levelSelected = true;
+                spawnLevel();
+                resetBallsOnPaddle();
             }
         }
 
@@ -131,126 +129,144 @@ void Game::processInput()
 
     while (window.pollEvent(event))
     {
-        if (event.type ==
-            sf::Event::Closed)
+        if (event.type == sf::Event::Closed)
         {
             window.close();
         }
 
-        if (event.type ==
-            sf::Event::KeyPressed)
+        if (event.type != sf::Event::KeyPressed)
+            continue;
+
+        if (event.key.code == sf::Keyboard::Escape)
         {
-            if (event.key.code ==
-                sf::Keyboard::Escape)
+            window.close();
+        }
+        else if (event.key.code == sf::Keyboard::Space)
+        {
+            for (auto& ball : balls)
             {
-                window.close();
-            }
+                if (!ball.isSticky())
+                    continue;
 
-            if (event.key.code ==
-                sf::Keyboard::Space)
-            {
-                started = true;
+                ball.setSticky(false);
 
-                for (auto& ball : balls)
+                sf::Vector2f velocity =
+                    ball.getVelocity();
+
+                if (
+                    std::abs(velocity.x) < 0.001f &&
+                    std::abs(velocity.y) < 0.001f)
                 {
-                    if (ball.isSticky())
-                    {
-                        ball.setSticky(false);
-
-                        sf::Vector2f vel =
-                            ball.getVelocity();
-
-                        if (vel.x == 0.f &&
-                            vel.y == 0.f)
+                    ball.setVelocity(
                         {
-                            ball.setVelocity(
-                                {
-                                    BALL_INIT_SPEED,
-                                    -BALL_INIT_SPEED
-                                });
-                        }
-                    }
+                            BALL_INIT_SPEED,
+                            -BALL_INIT_SPEED
+                        });
                 }
             }
         }
     }
 }
 
+BonusType Game::getRandomBonusType() const
+{
+    static std::random_device rd;
+    static std::mt19937 generator(rd());
+
+    static std::uniform_int_distribution<int> distribution(
+        0,
+        static_cast<int>(BonusType::ExtraBall));
+
+    return static_cast<BonusType>(
+        distribution(generator));
+}
+
 void Game::spawnLevel()
 {
     blocks.clear();
+    activeBonuses.clear();
+
+    const sf::Vector2f blockSize(
+        BLOCK_WIDTH,
+        BLOCK_HEIGHT);
+
+    constexpr float startX = 30.f;
+    constexpr float startY = 40.f;
+    constexpr float stepX = 64.f;
+    constexpr float stepY = 29.f;
 
     switch (selectedLevel)
     {
     case LevelType::Classic:
     {
-        float startX = 30.f;
-        float startY = 40.f;
-
-        for (int row = 0; row < 8; row++)
+        for (int row = 0; row < BLOCK_ROWS; ++row)
         {
-            for (int col = 0; col < 12; col++)
+            for (int col = 0; col < BLOCK_COLS; ++col)
             {
-                sf::Vector2f pos(
-                    startX + col * 64.f,
-                    startY + row * 29.f);
+                sf::Vector2f position(
+                    startX + col * stepX,
+                    startY + row * stepY);
 
                 if (row < 2)
                 {
-                    blocks.emplace_back(
-                        pos,
-                        sf::Vector2f(BLOCK_WIDTH, BLOCK_HEIGHT),
-                        BlockType::Indestructible);
+                    blocks.push_back(
+                        BlockFactory::create(
+                            position,
+                            blockSize,
+                            BlockType::Indestructible));
                 }
                 else if (row < 4)
                 {
-                    blocks.emplace_back(
-                        pos,
-                        sf::Vector2f(BLOCK_WIDTH, BLOCK_HEIGHT),
-                        BlockType::Normal);
+                    blocks.push_back(
+                        BlockFactory::create(
+                            position,
+                            blockSize,
+                            BlockType::Normal));
                 }
                 else if (row == 4)
                 {
-                    blocks.emplace_back(
-                        pos,
-                        sf::Vector2f(BLOCK_WIDTH, BLOCK_HEIGHT),
-                        BlockType::BonusDrop,
-                        1,
-                        static_cast<BonusType>(
-                            rand() % 7));
+                    blocks.push_back(
+                        BlockFactory::create(
+                            position,
+                            blockSize,
+                            BlockType::BonusDrop,
+                            1,
+                            getRandomBonusType()));
                 }
                 else if (row == 5)
                 {
-                    blocks.emplace_back(
-                        pos,
-                        sf::Vector2f(BLOCK_WIDTH, BLOCK_HEIGHT),
-                        BlockType::Health,
-                        3);
+                    blocks.push_back(
+                        BlockFactory::create(
+                            position,
+                            blockSize,
+                            BlockType::Health,
+                            3));
                 }
                 else
                 {
-                    blocks.emplace_back(
-                        pos,
-                        sf::Vector2f(BLOCK_WIDTH, BLOCK_HEIGHT),
-                        BlockType::SpeedIncrease);
+                    blocks.push_back(
+                        BlockFactory::create(
+                            position,
+                            blockSize,
+                            BlockType::SpeedIncrease));
                 }
             }
         }
 
         break;
-    } case LevelType::Fortress:
-    {
-        float startX = 30.f;
-        float startY = 40.f;
+    }
 
-        for (int row = 0; row < 8; row++)
+    case LevelType::Fortress:
+    {
+        for (int row = 0; row < BLOCK_ROWS; ++row)
         {
-            for (int col = 0; col < 12; col++)
+            for (int col = 0; col < BLOCK_COLS; ++col)
             {
                 bool place = false;
                 BlockType type = BlockType::Normal;
+                int health = 1;
+                BonusType bonus = BonusType::None;
 
-                
                 if (
                     (row == 0 && col != 5 && col != 6) ||
                     (row == 7 && col != 5 && col != 6) ||
@@ -261,7 +277,6 @@ void Game::spawnLevel()
                     type = BlockType::Indestructible;
                 }
 
-                
                 if (
                     row >= 2 &&
                     row <= 5 &&
@@ -270,39 +285,41 @@ void Game::spawnLevel()
                 {
                     place = true;
                     type = BlockType::Health;
+                    health = 3;
                 }
 
-                
                 if (
                     (row == 2 || row == 5) &&
                     (col == 2 || col == 9))
                 {
                     place = true;
                     type = BlockType::BonusDrop;
+                    bonus = getRandomBonusType();
                 }
 
                 if (!place)
                     continue;
 
-                sf::Vector2f pos(
-                    startX + col * 64.f,
-                    startY + row * 29.f);
+                sf::Vector2f position(
+                    startX + col * stepX,
+                    startY + row * stepY);
 
-                blocks.emplace_back(
-                    pos,
-                    sf::Vector2f(
-                        BLOCK_WIDTH,
-                        BLOCK_HEIGHT),
-                    type,
-                    3,
-                    static_cast<BonusType>(rand() % 7));
+                blocks.push_back(
+                    BlockFactory::create(
+                        position,
+                        blockSize,
+                        type,
+                        health,
+                        bonus));
             }
         }
 
         break;
-    }case LevelType::Maze:
+    }
+
+    case LevelType::Maze:
     {
-        int maze[8][12] =
+        int maze[BLOCK_ROWS][BLOCK_COLS] =
         {
             {1,1,1,1,0,0,0,0,1,1,1,1},
             {1,0,0,0,0,0,0,0,0,0,0,1},
@@ -314,22 +331,20 @@ void Game::spawnLevel()
             {1,1,1,1,0,0,0,0,1,1,1,1}
         };
 
-        float startX = 30.f;
-        float startY = 40.f;
-
-        for (int row = 0; row < 8; row++)
+        for (int row = 0; row < BLOCK_ROWS; ++row)
         {
-            for (int col = 0; col < 12; col++)
+            for (int col = 0; col < BLOCK_COLS; ++col)
             {
                 if (!maze[row][col])
                     continue;
 
-                sf::Vector2f pos(
-                    startX + col * 64.f,
-                    startY + row * 29.f);
+                sf::Vector2f position(
+                    startX + col * stepX,
+                    startY + row * stepY);
 
-                BlockType type;
-                int hp = 1;
+                BlockType type = BlockType::Normal;
+                int health = 1;
+                BonusType bonus = BonusType::None;
 
                 if (
                     row == 0 ||
@@ -341,32 +356,36 @@ void Game::spawnLevel()
                 }
                 else
                 {
-                    int r = rand() % 3;
+                    int variant =
+                        static_cast<int>(
+                            randomFloat(0.f, 3.f));
 
-                    if (r == 0)
+                    if (variant == 0)
                     {
                         type = BlockType::Normal;
                     }
-                    else if (r == 1)
+                    else if (variant == 1)
                     {
                         type = BlockType::BonusDrop;
+                        bonus = getRandomBonusType();
                     }
                     else
                     {
                         type = BlockType::Health;
-                        hp = 2 + rand() % 3;
+                        health =
+                            2 +
+                            static_cast<int>(
+                                randomFloat(0.f, 2.f));
                     }
                 }
 
-                blocks.emplace_back(
-                    pos,
-                    sf::Vector2f(
-                        BLOCK_WIDTH,
-                        BLOCK_HEIGHT),
-                    type,
-                    hp,
-                    static_cast<BonusType>(
-                        rand() % 7));
+                blocks.push_back(
+                    BlockFactory::create(
+                        position,
+                        blockSize,
+                        type,
+                        health,
+                        bonus));
             }
         }
 
@@ -397,6 +416,23 @@ void Game::removeBall(int index)
         balls.begin() + index);
 }
 
+void Game::resetBallsOnPaddle()
+{
+    balls.clear();
+
+    addBall(
+        {
+            paddle.getPosition().x,
+            paddle.getPosition().y - 20.f
+        },
+        {
+            BALL_INIT_SPEED,
+            -BALL_INIT_SPEED
+        });
+
+        balls.back().setSticky(true);
+}
+
 void Game::update(float dt)
 {
     paddle.update(dt);
@@ -419,70 +455,99 @@ void Game::update(float dt)
 
     for (auto& bonus : activeBonuses)
     {
-        if (bonus.isActive())
-            bonus.update(dt);
+        if (!bonus->isActive())
+            continue;
+
+        bonus->update(dt);
+
+        if (bonus->getGlobalBounds().top > WINDOW_HEIGHT)
+            bonus->deactivate();
     }
 
-    scoreText.setString(
-        "Score: " +
-        std::to_string(score));
-
-    livesText.setString(
-        "Lives: " +
-        std::to_string(lives));
-
-        checkBonusesCollision();
+    checkBonusesCollision();
 
     for (auto& ball : balls)
     {
-        sf::Vector2f pos = ball.getPosition();
-        sf::Vector2f vel = ball.getVelocity();
+        if (ball.isSticky())
+            continue;
 
-        if (pos.x - BALL_RADIUS < 0.f)
+        sf::Vector2f position =
+            ball.getPosition();
+
+        sf::Vector2f velocity =
+            ball.getVelocity();
+
+        float radius =
+            ball.getRadius();
+
+        if (position.x - radius < 0.f)
         {
-            vel.x = std::abs(vel.x);
-            ball.setVelocity(vel);
+            position.x = radius;
+            velocity.x = std::abs(velocity.x);
         }
 
-        if (pos.x + BALL_RADIUS > WINDOW_WIDTH)
+        if (position.x + radius > WINDOW_WIDTH)
         {
-            vel.x = -std::abs(vel.x);
-            ball.setVelocity(vel);
+            position.x = WINDOW_WIDTH - radius;
+            velocity.x = -std::abs(velocity.x);
         }
 
-        if (pos.y - BALL_RADIUS < 0.f)
+        if (position.y - radius < 0.f)
         {
-            vel.y = std::abs(vel.y);
-            ball.setVelocity(vel);
+            position.y = radius;
+            velocity.y = std::abs(velocity.y);
         }
 
-        if (Collision::checkAABB(
+        ball.setPosition(position);
+        ball.setVelocity(velocity);
+
+        if (!Collision::checkAABB(
             ball.getGlobalBounds(),
             paddle.getGlobalBounds()))
         {
-            if (stickyMode)
-            {
-                ball.setSticky(true);
-                ball.setVelocity({ 0.f, 0.f });
+            continue;
+        }
 
-                stickyMode = false;
-            }
-            else
-            {
-                vel = ball.getVelocity();
+        if (stickyMode)
+        {
+            ball.setSticky(true);
+            ball.setVelocity({ 0.f, 0.f });
+            stickyMode = false;
+        }
+        else if (ball.getVelocity().y > 0.f)
+        {
+            sf::Vector2f currentVelocity =
+                ball.getVelocity();
 
-                vel.y = -std::abs(vel.y);
+            float speed =
+                std::sqrt(
+                    currentVelocity.x * currentVelocity.x +
+                    currentVelocity.y * currentVelocity.y);
 
-                float offset =
-                    (ball.getPosition().x -
-                     paddle.getPosition().x)
-                    /
-                    (paddle.getWidth() / 2.f);
+            if (speed < BALL_MIN_SPEED)
+                speed = BALL_INIT_SPEED;
 
-                vel.x += offset * 120.f;
+            float offset =
+                (ball.getPosition().x - paddle.getPosition().x) /
+                (paddle.getWidth() / 2.f);
 
-                ball.setVelocity(vel);
-            }
+            offset = std::clamp(
+                offset,
+                -1.f,
+                1.f);
+
+            sf::Vector2f direction =
+                normalize({ offset, -1.f });
+
+            ball.setVelocity(direction * speed);
+
+            ball.setPosition(
+                {
+                    ball.getPosition().x,
+                    paddle.getGlobalBounds().top -
+                    ball.getRadius() -
+                    0.1f
+                });
         }
     }
 
@@ -490,54 +555,46 @@ void Game::update(float dt)
 
     for (auto& ball : balls)
     {
+        if (ball.isSticky())
+            continue;
+
         for (size_t i = 0; i < blocks.size(); ++i)
         {
-            if (!Collision::checkAABB(
-                ball.getGlobalBounds(),
-                blocks[i].getGlobalBounds()))
+            if (
+                std::find(
+                    blocksToRemove.begin(),
+                    blocksToRemove.end(),
+                    i) != blocksToRemove.end())
             {
                 continue;
             }
 
-            Collision::resolveBallBlockCollision(
-                ball,
-                blocks[i].getGlobalBounds());
+            if (!Collision::checkAABB(
+                ball.getGlobalBounds(),
+                blocks[i]->getGlobalBounds()))
+            {
+                continue;
+            }
+
+            blocks[i]->resolveCollision(ball);
 
             bool destroyed =
-                blocks[i].handleHit(ball);
+                blocks[i]->handleHit(ball);
 
-            if (blocks[i].getType() ==
-                BlockType::SpeedIncrease)
-            {
-                ball.increaseSpeed(1.03f);
-            }
-
-            if (blocks[i].getType() ==
-                BlockType::Health)
-            {
-                ++score;
-            }
+            score +=
+                blocks[i]->getScoreForHit(destroyed);
 
             if (destroyed)
             {
-                ++score;
+                std::unique_ptr<Bonus> bonus =
+                    blocks[i]->createBonus();
 
-                if (blocks[i].getType() ==
-                    BlockType::BonusDrop)
-                {
-                    activeBonuses.emplace_back(
-                        sf::Vector2f(
-                            blocks[i]
-                            .getGlobalBounds().left +
-                            20.f,
-
-                            blocks[i]
-                            .getGlobalBounds().top),
-                        blocks[i].getBonusType());
-                }
+                if (bonus)
+                    activeBonuses.push_back(std::move(bonus));
 
                 blocksToRemove.push_back(i);
             }
+
             break;
         }
     }
@@ -552,31 +609,34 @@ void Game::update(float dt)
             blocksToRemove.end()),
         blocksToRemove.end());
 
-    for (int i =
-        static_cast<int>(
-            blocksToRemove.size()) - 1;
+    for (
+        int i = static_cast<int>(blocksToRemove.size()) - 1;
         i >= 0;
         --i)
     {
         blocks.erase(
-            blocks.begin() +
-            blocksToRemove[i]);
+            blocks.begin() + blocksToRemove[i]);
     }
 
     for (size_t i = 0; i < balls.size(); ++i)
     {
-        for (size_t j = i + 1;
-            j < balls.size();
-            ++j)
+        for (size_t j = i + 1; j < balls.size(); ++j)
         {
+            if (
+                balls[i].isSticky() ||
+                balls[j].isSticky())
+            {
+                continue;
+            }
+
             Collision::resolveBallBallCollision(
                 balls[i],
                 balls[j]);
         }
     }
 
-    for (int i =
-        static_cast<int>(balls.size()) - 1;
+    for (
+        int i = static_cast<int>(balls.size()) - 1;
         i >= 0;
         --i)
     {
@@ -591,17 +651,17 @@ void Game::update(float dt)
         {
             oneShotFloorActive = false;
 
-            sf::Vector2f vel =
+            sf::Vector2f velocity =
                 balls[i].getVelocity();
 
-            vel.y = -std::abs(vel.y);
+            velocity.y = -std::abs(velocity.y);
 
-            balls[i].setVelocity(vel);
+            balls[i].setVelocity(velocity);
 
             balls[i].setPosition(
                 {
                     balls[i].getPosition().x,
-                    WINDOW_HEIGHT - 30.f
+                    WINDOW_HEIGHT - balls[i].getRadius() - 1.f
                 });
 
             continue;
@@ -626,17 +686,7 @@ void Game::update(float dt)
         }
         else
         {
-            addBall(
-                {
-                    paddle.getPosition().x,
-                    paddle.getPosition().y - 20.f
-                },
-            {
-                BALL_INIT_SPEED,
-                -BALL_INIT_SPEED
-            });
-
-            balls.back().setSticky(true);
+            resetBallsOnPaddle();
         }
     }
 
@@ -644,8 +694,7 @@ void Game::update(float dt)
 
     for (const auto& block : blocks)
     {
-        if (block.getType() !=
-            BlockType::Indestructible)
+        if (block->isDestructible())
         {
             win = false;
             break;
@@ -655,36 +704,33 @@ void Game::update(float dt)
     if (win)
     {
         spawnLevel();
-
-        addBall(
-            {
-                paddle.getPosition().x,
-                paddle.getPosition().y - 20.f
-            },
-        {
-            BALL_INIT_SPEED,
-            -BALL_INIT_SPEED
-        });
-
-        balls.back().setSticky(true);
+        stickyMode = false;
+        oneShotFloorActive = false;
+        resetBallsOnPaddle();
     }
+
+    scoreText.setString(
+        "Score: " +
+        std::to_string(score));
+
+    livesText.setString(
+        "Lives: " +
+        std::to_string(lives));
 }
 
 void Game::checkBonusesCollision()
 {
     for (auto& bonus : activeBonuses)
     {
-        if (!bonus.isActive())
+        if (!bonus->isActive())
             continue;
 
         if (Collision::checkAABB(
-            bonus.getGlobalBounds(),
+            bonus->getGlobalBounds(),
             paddle.getGlobalBounds()))
         {
-            applyBonus(
-                bonus.getType());
-
-            bonus.deactivate();
+            bonus->apply(*this);
+            bonus->deactivate();
         }
     }
 
@@ -692,72 +738,66 @@ void Game::checkBonusesCollision()
         std::remove_if(
             activeBonuses.begin(),
             activeBonuses.end(),
-            [](const Bonus& b)
+            [](const std::unique_ptr<Bonus>& bonus)
             {
-                return !b.isActive();
+                return !bonus->isActive();
             }),
         activeBonuses.end());
 }
-void Game::applyBonus(
-    BonusType type)
+
+void Game::expandPaddle(float factor)
 {
-    switch (type)
+    paddle.resize(
+        paddle.getWidth() * factor);
+}
+
+void Game::shrinkPaddle(float factor)
+{
+    paddle.resize(
+        paddle.getWidth() * factor);
+}
+
+void Game::changeBallsSpeed(float factor)
+{
+    for (auto& ball : balls)
     {
-    case BonusType::ExpandPaddle:
+        if (factor >= 1.f)
+            ball.increaseSpeed(factor);
+        else
+            ball.decreaseSpeed(factor);
+    }
+}
 
-        paddle.resize(
-            paddle.getWidth() * 1.3f);
-        break;
+void Game::activateStickyMode()
+{
+    stickyMode = true;
+}
 
-    case BonusType::ShrinkPaddle:
+void Game::activateOneShotFloor()
+{
+    oneShotFloorActive = true;
+}
 
-        paddle.resize(
-            paddle.getWidth() * 0.8f);
-        break;
+void Game::spawnExtraBall()
+{
+    sf::Vector2f velocity(
+        randomFloat(-250.f, 250.f),
+        randomFloat(-300.f, -200.f));
 
-    case BonusType::IncreaseSpeed:
-
-        for (auto& ball : balls)
-            ball.increaseSpeed(1.2f);
-
-        break;
-
-    case BonusType::DecreaseSpeed:
-
-        for (auto& ball : balls)
-            ball.decreaseSpeed(0.8f);
-
-        break;
-
-    case BonusType::StickyPaddle:
-
-        stickyMode = true;
-        break;
-
-    case BonusType::OneShotFloor:
-
-        oneShotFloorActive = true;
-        break;
-
-    case BonusType::ExtraBall:
+    if (std::abs(velocity.x) < 80.f)
     {
-        sf::Vector2f velocity(
-            randomFloat(-250.f, 250.f),
-            randomFloat(-300.f, -200.f));
-
-        addBall(
-            {
-                paddle.getPosition().x,
-                paddle.getPosition().y - 25.f
-            },
-            velocity);
-
-        break;
+        if (velocity.x < 0.f)
+            velocity.x = -80.f;
+        else
+            velocity.x = 80.f;
     }
 
-    default:
-        break;
-    }
+    addBall(
+        {
+            paddle.getPosition().x,
+            paddle.getPosition().y - 25.f
+        },
+        velocity);
 }
 
 void Game::render()
@@ -769,7 +809,6 @@ void Game::render()
         sf::Text text;
 
         text.setFont(font);
-
         text.setCharacterSize(30);
 
         text.setString(
@@ -781,7 +820,6 @@ void Game::render()
         text.setPosition(220.f, 180.f);
 
         window.draw(text);
-
         window.display();
 
         return;
@@ -796,16 +834,15 @@ void Game::render()
 
     for (const auto& block : blocks)
     {
-        block.draw(window);
+        block->draw(window);
     }
 
     for (const auto& bonus : activeBonuses)
     {
-        bonus.draw(window);
+        bonus->draw(window);
     }
 
     window.draw(scoreText);
-
     window.draw(livesText);
 
     if (gameOver)

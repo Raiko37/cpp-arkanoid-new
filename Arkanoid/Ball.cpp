@@ -3,10 +3,8 @@
 #include "Constants.h"
 #include "Utils.h"
 
+#include <algorithm>
 #include <cmath>
-
-const float Ball::MAX_SPEED = BALL_MAX_SPEED;
-const float Ball::MIN_SPEED = BALL_MIN_SPEED;
 
 Ball::Ball(
     const sf::Vector2f& position,
@@ -18,15 +16,10 @@ Ball::Ball(
     sticky(false)
 {
     shape.setRadius(radius);
-
     shape.setOrigin(radius, radius);
-
     shape.setPosition(position);
-
     shape.setFillColor(sf::Color::White);
-
     shape.setOutlineColor(sf::Color::Red);
-
     shape.setOutlineThickness(2.f);
 }
 
@@ -75,14 +68,17 @@ void Ball::increaseSpeed(float factor)
             velocity.x * velocity.x +
             velocity.y * velocity.y);
 
-    speed *= factor;
+    if (speed < 0.0001f)
+        return;
 
-    if (speed > MAX_SPEED)
-        speed = MAX_SPEED;
+    speed = std::min(
+        speed * factor,
+        BALL_MAX_SPEED);
 
-    sf::Vector2f dir = normalize(velocity);
+    sf::Vector2f direction =
+        normalize(velocity);
 
-    velocity = dir * speed;
+    velocity = direction * speed;
 }
 
 void Ball::decreaseSpeed(float factor)
@@ -92,14 +88,17 @@ void Ball::decreaseSpeed(float factor)
             velocity.x * velocity.x +
             velocity.y * velocity.y);
 
-    speed *= factor;
+    if (speed < 0.0001f)
+        return;
 
-    if (speed < MIN_SPEED)
-        speed = MIN_SPEED;
+    speed = std::max(
+        speed * factor,
+        BALL_MIN_SPEED);
 
-    sf::Vector2f dir = normalize(velocity);
+    sf::Vector2f direction =
+        normalize(velocity);
 
-    velocity = dir * speed;
+    velocity = direction * speed;
 }
 
 bool Ball::isSticky() const

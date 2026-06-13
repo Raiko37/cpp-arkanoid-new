@@ -38,7 +38,4 @@ private:
     float speed;
 
     float baseWidth;
-
-    static const float MIN_WIDTH;
-    static const float MAX_WIDTH;
 };
